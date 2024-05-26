@@ -8,7 +8,6 @@ import base64
 
 app = FastAPI()
 
-#comando inicial: source venv/bin/activate
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
@@ -19,7 +18,6 @@ app.add_middleware(
 )
 
 # Cargar el modelo YOLO preentrenado
-# model = YOLO("yolov8m.pt")
 model = YOLO("models/bestv1.pt")
 
 @app.get("/")
@@ -42,20 +40,27 @@ async def detect(file: UploadFile = File(...)):
         # Realizar la predicción
         results = model.predict(source=image, save=False, conf=0.5)
 
-        # Dibujar las predicciones en la imagen
+        # Extraer datos de predicción
+        detections = []
         for result in results:
-            boxes = result.boxes  # Obtener las cajas detectadas
-            for box in boxes:
-                # Convertir coordenadas de la caja a enteros
+            for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                conf = box.conf[0]  # Confianza de la predicción
-                cls = int(box.cls[0])  # Clase de la predicción
-                color = (221,160,221)
+                conf = float(box.conf[0])
+                cls = int(box.cls[0])
+                detections.append({
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "confidence": conf,
+                    "class": cls,
+                    "name": model.names[cls]
+                })
 
-                # Dibujar la caja y la etiqueta en la imagen
-                ##label = f"{model.names[cls]}: {conf:.2f}"
-                label = ""
-                cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)  # Borde de la caja
+                # Dibujar las cajas en la imagen
+                color = (221, 160, 221)
+                label = f"{model.names[cls]}: {conf:.2f}"
+                cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(
                     image,
                     label,
@@ -70,8 +75,9 @@ async def detect(file: UploadFile = File(...)):
         _, buffer = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
         jpg_as_text = base64.b64encode(buffer).decode("utf-8")
 
-        return {"image": jpg_as_text, "result": result}
+        return {"image": jpg_as_text, "detections": detections}
 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
 

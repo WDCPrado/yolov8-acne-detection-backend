@@ -4,7 +4,18 @@ import subprocess
 
 
 def install():
-    subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+    # Agregar --no-cache-dir para evitar el uso de caché
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-cache-dir",
+            "-r",
+            "requirements.txt",
+        ]
+    )
 
 
 def start():

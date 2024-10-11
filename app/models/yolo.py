@@ -2,7 +2,7 @@ from ultralytics import YOLO
 
 
 class YOLOModel:
-    def __init__(self, model_path="app/weights/bestv1.pt"):
+    def __init__(self, model_path="../../weights/bestv1.pt"):
         self.model = YOLO(model_path)
 
     def predict(self, image, conf=0.5):

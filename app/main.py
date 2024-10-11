@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import detection
+
+# from app.routers import detection
 
 app = FastAPI()
 
@@ -14,7 +15,7 @@ app.add_middleware(
 )
 
 # Incluir routers
-app.include_router(detection.router)
+# app.include_router(detection.router)
 
 
 @app.get("/")

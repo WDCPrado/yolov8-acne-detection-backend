@@ -1,21 +1,25 @@
 # Usa una imagen base de Python
 FROM python:3.9-slim-buster
 
-# Instala curl y tzdata
-RUN apt-get update && apt-get install -y curl tzdata
+# Instala dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    curl \
+    tzdata \
+    libgl1-mesa-glx \
+    libglib2.0-0
 
 # Establece la zona horaria de Chile
 ENV TZ=America/Santiago
 
 # Establece el directorio de trabajo
-WORKDIR /app
+WORKDIR /acne-detection-backend
 
 # Copia los archivos de requerimientos e instala las dependencias
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia el resto de los archivos de la aplicación
-COPY ./app ./app
+COPY . .
 
 # Expone el puerto que la aplicación escuchará
 EXPOSE 80

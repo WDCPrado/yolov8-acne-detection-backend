@@ -1,6 +1,5 @@
-fastapi 
-uvicorn 
+fastapi
+uvicorn
 opencv-python-headless
-opencv-python
 numpy
 ultralytics

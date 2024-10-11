@@ -1,13 +1,10 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from ultralytics import YOLO
-import numpy as np
 import base64
-from skimage import io, draw, color
-from skimage.transform import resize
-from skimage.util import img_as_ubyte
-from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 app = FastAPI()
 
@@ -24,93 +21,130 @@ app.add_middleware(
 model = YOLO("app/weights/bestv1.pt")
 
 
-@app.get("/")
-async def root():
-    return {"message": "Yolo Server is running"}
+class ImageUpload(BaseModel):
+    image: str
 
 
-def draw_prediction(img, x, y, class_name, confidence):
-    # Dibujar el círculo
-    radius = 20
-    rr, cc = draw.circle_perimeter(int(y), int(x), radius)
-    img[rr, cc] = [0, 255, 0]  # Color verde
+def draw_prediction(img, x, y, class_name, confidence, img_width, img_height):
+    draw = ImageDraw.Draw(img)
 
-    # Preparar el texto
-    label = f"{class_name}: {confidence:.2f}"
+    # Calcular el tamaño del círculo basado en el tamaño de la imagen
+    radius = int(min(img_width, img_height) * 0.02)  # Tamaño del círculo
 
-    # Convertir la imagen a PIL para dibujar texto
-    pil_img = Image.fromarray(img_as_ubyte(img))
-    draw = ImageDraw.Draw(pil_img)
+    # Dibujar el círculo con un borde más delgado
+    draw.ellipse(
+        [x - radius, y - radius, x + radius, y + radius], outline=(0, 255, 0), width=2
+    )
 
-    # Usar una fuente por defecto
-    font = ImageFont.load_default()
+    # Preparar el texto con confianza como porcentaje
+    confidence_percentage = confidence * 100
+    label = f"{class_name}: {confidence_percentage:.0f}%"  # Formato de porcentaje
+
+    # Usar una fuente más grande y clara
+    font_size = int(min(img_width, img_height) * 0.025)
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except IOError:
+        font = ImageFont.load_default()
 
     # Obtener el tamaño del texto
     text_width, text_height = draw.textsize(label, font=font)
 
-    # Dibujar un rectángulo de fondo para el texto
-    draw.rectangle(
-        [
-            int(x - text_width / 2),
-            int(y - radius - text_height - 5),
-            int(x + text_width / 2),
-            int(y - radius),
-        ],
-        fill=(255, 255, 255),
-    )
+    # Dibujar un rectángulo de fondo para el texto con bordes redondeados
+    rect_coords = [
+        x - text_width / 2 - 5,
+        y - radius - text_height - 20,
+        x + text_width / 2 + 5,
+        y - radius - 10,
+    ]
+    draw.rounded_rectangle(rect_coords, radius=8, fill=(255, 255, 255, 200))
 
     # Dibujar el texto
     draw.text(
-        (int(x - text_width / 2), int(y - radius - text_height - 5)),
+        (x - text_width / 2, y - radius - text_height - 15),
         label,
         fill=(0, 0, 0),
         font=font,
     )
 
-    # Convertir de vuelta a numpy array
-    return np.array(pil_img)
+    return img
+
+
+@app.get("/")
+async def root():
+    return {"message": "Yolo Server is running"}
 
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    contents = await file.read()
-    img = io.imread(BytesIO(contents))
+async def predict(body: ImageUpload):
+    if not body.image:
+        raise HTTPException(status_code=400, detail="No image provided")
 
-    # Asegurarse de que la imagen esté en RGB
-    if img.shape[-1] == 4:  # Si es RGBA
-        img = color.rgba2rgb(img)
+    try:
+        # Decodificar la imagen de base64
+        img_data = base64.b64decode(body.image)
+        img = Image.open(BytesIO(img_data))
 
-    results = model(img)
+        # Convertir la imagen a RGB si es necesario
+        if img.mode != "RGB":
+            img = img.convert("RGB")
 
-    detections = []
-    for r in results:
-        boxes = r.boxes
-        for box in boxes:
-            x1, y1, x2, y2 = box.xyxy[0]
-            confidence = box.conf[0]
-            class_id = box.cls[0]
-            class_name = model.names[int(class_id)]
+        # Guardar las dimensiones originales
+        original_width, original_height = img.size
 
-            # Calcular el centro del bounding box
-            center_x = (x1 + x2) / 2
-            center_y = (y1 + y2) / 2
+        # Redimensionar la imagen a 540x540 para la predicción
+        img_resized = img.resize((540, 540))
 
-            detections.append(
-                {
-                    "center": [float(center_x), float(center_y)],
-                    "confidence": float(confidence),
-                    "class_id": int(class_id),
-                    "class_name": class_name,
-                }
-            )
+        # Realizar la predicción
+        results = model(img_resized)
 
-            # Dibujar la predicción en la imagen
-            img = draw_prediction(img, center_x, center_y, class_name, confidence)
+        detections = []
+        for r in results:
+            boxes = r.boxes
+            for box in boxes:
+                x1, y1, x2, y2 = box.xyxy[0]
+                confidence = box.conf[0]
+                class_id = box.cls[0]
+                class_name = model.names[int(class_id)]
 
-    # Convertir la imagen a bytes
-    img_pil = Image.fromarray(img_as_ubyte(img))
-    buffered = BytesIO()
-    img_pil.save(buffered, format="JPEG")
-    img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                # Escalar las coordenadas de vuelta a la imagen original
+                scale_x = original_width / 540
+                scale_y = original_height / 540
+                center_x = (x1 + x2) / 2 * scale_x
+                center_y = (y1 + y2) / 2 * scale_y
 
-    return {"detections": detections, "image": img_base64}
+                detections.append(
+                    {
+                        "center": [float(center_x), float(center_y)],
+                        "confidence": float(confidence),
+                        "class_id": int(class_id),
+                        "class_name": class_name,
+                    }
+                )
+
+                # Dibujar la predicción en la imagen original
+                img = draw_prediction(
+                    img,
+                    center_x,
+                    center_y,
+                    class_name,
+                    confidence,
+                    original_width,
+                    original_height,
+                )
+
+        # Convertir la imagen procesada a base64 con alta calidad
+        buffered = BytesIO()
+        img.save(buffered, format="JPEG", quality=95)
+        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        return {"detections": detections, "image": img_base64}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

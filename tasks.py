@@ -1,16 +1,30 @@
 from invoke import task
+import os
+import shutil
 
 
 @task
 def install(c):
     """Instala las dependencias del proyecto."""
     c.run("pip install -r requirements.txt")
+    print("Dependencias instaladas correctamente.")
+
+
+@task
+def uninstall(c):
+    """Desinstala las dependencias del proyecto."""
+    with open("requirements.txt", "r") as f:
+        packages = f.read().splitlines()
+    for package in packages:
+        c.run(f"pip uninstall -y {package}")
+    print("Dependencias desinstaladas correctamente.")
 
 
 @task
 def update(c):
     """Actualiza las dependencias del proyecto."""
     c.run("pip install --upgrade -r requirements.txt")
+    print("Dependencias actualizadas correctamente.")
 
 
 @task
@@ -28,5 +42,24 @@ def dev(c):
 @task
 def clean(c):
     """Limpia archivos temporales y caches."""
-    c.run("find . -type d -name __pycache__ -exec rm -rf {} +")
-    c.run("find . -type f -name '*.pyc' -delete")
+    patterns = ["__pycache__", "*.pyc"]
+    for root, dirs, files in os.walk("."):
+        for pattern in patterns:
+            if pattern in dirs:
+                shutil.rmtree(os.path.join(root, pattern))
+            for file in files:
+                if file.endswith(".pyc"):
+                    os.remove(os.path.join(root, file))
+    print("Limpieza completada.")
+
+
+@task
+def list(c):
+    """Lista las dependencias instaladas."""
+    c.run("pip list")
+
+
+@task
+def predict(c):
+    """Predicción de prueba."""
+    c.run("python testing/predict.py")

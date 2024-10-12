@@ -5,3 +5,8 @@ numpy==1.23.5
 pillow==9.3.0
 python-multipart==0.0.5
 scikit-image==0.19.3
+reportlab==3.6.12
+pydantic==1.8.2
+python-jose==3.3.0
+passlib==1.7.4
+bcrypt==3.2.0

@@ -16,8 +16,13 @@ yolov8-acne-detection-backend
 │       └── main.cpython-39.pyc
 ├── docker-compose.yml
 ├── Dockerfile
+├── README.md
 ├── requirements.txt
-└── tasks.py
+├── tasks.py
+└── testing
+    ├── acne.png
+    ├── predict.py
+    └── resultado_prediccion.jpg
 ```
 
 - `app/main.py`: Contiene la lógica principal de la aplicación FastAPI.

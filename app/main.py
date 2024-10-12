@@ -1,14 +1,32 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List, Dict
 from ultralytics import YOLO
 import base64
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from io import BytesIO
+import json
+import os
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Image as ReportLabImage,
+    Table,
+    TableStyle,
+    PageBreak,
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch, mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 app = FastAPI()
 
-# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,87 +35,146 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cargar el modelo YOLO
 model = YOLO("app/weights/bestv1.pt")
 
-
-class ImageUpload(BaseModel):
-    image: str
-
-
-def draw_prediction(img, x, y, class_name, confidence, img_width, img_height):
-    draw = ImageDraw.Draw(img)
-
-    # Calcular el tamaño del círculo basado en el tamaño de la imagen
-    radius = int(min(img_width, img_height) * 0.02)  # Tamaño del círculo
-
-    # Dibujar el círculo con un borde más delgado
-    draw.ellipse(
-        [x - radius, y - radius, x + radius, y + radius], outline=(0, 255, 0), width=2
-    )
-
-    # Preparar el texto con confianza como porcentaje
-    confidence_percentage = confidence * 100
-    label = f"{class_name}: {confidence_percentage:.0f}%"  # Formato de porcentaje
-
-    # Usar una fuente más grande y clara
-    font_size = int(min(img_width, img_height) * 0.025)
-    try:
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except IOError:
-        font = ImageFont.load_default()
-
-    # Obtener el tamaño del texto
-    text_width, text_height = draw.textsize(label, font=font)
-
-    # Dibujar un rectángulo de fondo para el texto con bordes redondeados
-    rect_coords = [
-        x - text_width / 2 - 5,
-        y - radius - text_height - 20,
-        x + text_width / 2 + 5,
-        y - radius - 10,
-    ]
-    draw.rounded_rectangle(rect_coords, radius=8, fill=(255, 255, 255, 200))
-
-    # Dibujar el texto
-    draw.text(
-        (x - text_width / 2, y - radius - text_height - 15),
-        label,
-        fill=(0, 0, 0),
-        font=font,
-    )
-
-    return img
+# Registrar fuentes personalizadas
+pdfmetrics.registerFont(TTFont("Roboto", "app/fonts/roboto/Roboto-Regular.ttf"))
+pdfmetrics.registerFont(TTFont("Roboto-Bold", "app/fonts/roboto/Roboto-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("Roboto-Italic", "app/fonts/roboto/Roboto-Italic.ttf"))
 
 
-@app.get("/")
-async def root():
-    return {"message": "Yolo Server is running"}
+class PatientInfo(BaseModel):
+    name: str
+    age: int
+    sex: int  # 0: Masculino, 1: Femenino, 2: Otro
 
 
-@app.post("/predict")
-async def predict(body: ImageUpload):
-    if not body.image:
-        raise HTTPException(status_code=400, detail="No image provided")
+class ExternalFactors(BaseModel):
+    stress_level: int
+    diet_quality: int
+    skin_type: int
+    sun_exposure: int
+    makeup_use: int
 
-    try:
-        # Decodificar la imagen de base64
-        img_data = base64.b64decode(body.image)
-        img = Image.open(BytesIO(img_data))
 
-        # Convertir la imagen a RGB si es necesario
-        if img.mode != "RGB":
-            img = img.convert("RGB")
+class AcneAnalysisResult(BaseModel):
+    detections: List[Dict]
+    factor_analysis: Dict[str, float]
+    recommendations: List[str]
+    pdf_report: str
 
-        # Guardar las dimensiones originales
-        original_width, original_height = img.size
 
-        # Redimensionar la imagen a 540x540 para la predicción
-        img_resized = img.resize((540, 540))
+class AcneAnalysisSystem:
+    def __init__(self):
+        # Pesos predeterminados si el tipo de acné no está especificado
+        self.DEFAULT_FACTOR_WEIGHTS = {
+            "stress_level": 0.2,
+            "diet_quality": 0.2,
+            "skin_type": 0.2,
+            "sun_exposure": 0.2,
+            "makeup_use": 0.2,
+        }
+        # Pesos específicos por tipo de acné
+        self.ACNE_TYPE_FACTOR_WEIGHTS = {
+            "Comedonal Acne": {
+                "stress_level": 0.1,
+                "diet_quality": 0.3,
+                "skin_type": 0.3,
+                "sun_exposure": 0.1,
+                "makeup_use": 0.2,
+            },
+            "Inflammatory Acne": {
+                "stress_level": 0.3,
+                "diet_quality": 0.2,
+                "skin_type": 0.2,
+                "sun_exposure": 0.2,
+                "makeup_use": 0.1,
+            },
+            "Cystic Acne": {
+                "stress_level": 0.4,
+                "diet_quality": 0.1,
+                "skin_type": 0.1,
+                "sun_exposure": 0.3,
+                "makeup_use": 0.1,
+            },
+            # Agrega más tipos de acné si es necesario
+        }
 
-        # Realizar la predicción
-        results = model(img_resized)
+    def analyze_external_factors(
+        self, factors: ExternalFactors, detections: List[Dict]
+    ) -> Dict[str, float]:
+        acne_scores = {}
+        acne_type_counts = {}
+        for detection in detections:
+            acne_type = detection["class_name"]
+            confidence = detection["confidence"]
+            if acne_type not in acne_type_counts:
+                acne_type_counts[acne_type] = 0
+            acne_type_counts[acne_type] += confidence
 
+        for acne_type, total_confidence in acne_type_counts.items():
+            factor_weights = self.ACNE_TYPE_FACTOR_WEIGHTS.get(
+                acne_type, self.DEFAULT_FACTOR_WEIGHTS
+            )
+            acne_score = 0
+            for factor, weight in factor_weights.items():
+                factor_value = getattr(factors, factor)
+                normalized_value = self.normalize_factor(factor, factor_value)
+                acne_score += normalized_value * weight * total_confidence
+            acne_scores[acne_type] = acne_score
+        return acne_scores
+
+    def normalize_factor(self, factor: str, value: int) -> float:
+        if factor in ["stress_level", "diet_quality"]:
+            return value / 10
+        elif factor == "skin_type":
+            return {1: 0.3, 2: 0.5, 3: 0.7, 4: 1.0}.get(value, 0.5)
+        elif factor == "sun_exposure":
+            return {1: 0.3, 2: 0.6, 3: 1.0}.get(value, 0.5)
+        elif factor == "makeup_use":
+            return {1: 0.3, 2: 0.6, 3: 1.0}.get(value, 0.5)
+        else:
+            return 0.5
+
+    def generate_recommendations(
+        self, factor_analysis: Dict[str, float], factors: ExternalFactors
+    ) -> List[str]:
+        recommendations = []
+        # Sumamos todos los puntajes de acné
+        total_acne_score = sum(factor_analysis.values())
+
+        if total_acne_score > 7:
+            recommendations.append(
+                "Considera consultar a un dermatólogo para un tratamiento personalizado."
+            )
+        if factors.stress_level > 7:
+            recommendations.append(
+                "Intenta reducir el estrés mediante técnicas de relajación o meditación."
+            )
+        if factors.diet_quality < 5:
+            recommendations.append(
+                "Mejora tu dieta incluyendo más frutas, verduras y alimentos ricos en omega-3."
+            )
+        if factors.skin_type == 4:
+            recommendations.append(
+                "Usa productos no comedogénicos y limpia tu rostro dos veces al día."
+            )
+        if factors.sun_exposure == 3:
+            recommendations.append(
+                "Utiliza protector solar diariamente para prevenir la inflamación y el daño cutáneo."
+            )
+        if factors.makeup_use == 3:
+            recommendations.append(
+                "Opta por maquillaje no comedogénico y asegúrate de removerlo completamente antes de dormir."
+            )
+
+        recommendations.append(
+            "Mantén una rutina de cuidado facial constante, usando productos adecuados para tu tipo de piel."
+        )
+        return recommendations
+
+    def analyze_image(self, image: Image.Image) -> List[Dict]:
+        results = model(image)
         detections = []
         for r in results:
             boxes = r.boxes
@@ -106,42 +183,289 @@ async def predict(body: ImageUpload):
                 confidence = box.conf[0]
                 class_id = box.cls[0]
                 class_name = model.names[int(class_id)]
-
-                # Escalar las coordenadas de vuelta a la imagen original
-                scale_x = original_width / 540
-                scale_y = original_height / 540
-                center_x = (x1 + x2) / 2 * scale_x
-                center_y = (y1 + y2) / 2 * scale_y
-
                 detections.append(
                     {
-                        "center": [float(center_x), float(center_y)],
+                        "center": [(x1 + x2) / 2, (y1 + y2) / 2],
                         "confidence": float(confidence),
                         "class_id": int(class_id),
                         "class_name": class_name,
                     }
                 )
+        return detections
 
-                # Dibujar la predicción en la imagen original
-                img = draw_prediction(
-                    img,
-                    center_x,
-                    center_y,
-                    class_name,
-                    confidence,
-                    original_width,
-                    original_height,
+
+def create_acne_report(
+    patient_info: PatientInfo,
+    acne_types: List[str],
+    predicted_image: bytes,
+    factor_analysis: Dict[str, float],
+    recommendations: List[str],
+    detections: List[Dict],
+    factors: ExternalFactors,
+) -> BytesIO:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=72,
+    )
+
+    styles = getSampleStyleSheet()
+
+    # Modificar estilos existentes
+    styles["Heading1"].fontName = "Roboto-Bold"
+    styles["Heading1"].fontSize = 16
+
+    styles["Heading2"].fontName = "Roboto-Bold"
+    styles["Heading2"].fontSize = 14
+
+    styles["Normal"].fontName = "Roboto"
+    styles["Normal"].fontSize = 11
+
+    # Añadir estilo Justify si no existe
+    if "Justify" not in styles:
+        styles.add(ParagraphStyle(name="Justify", parent=styles["Normal"], alignment=4))
+    else:
+        styles["Justify"].alignment = 4
+
+    content = []
+    content.append(Paragraph("Informe de Análisis de Acné", styles["Heading1"]))
+    content.append(Spacer(1, 12))
+
+    # Información del paciente
+    patient_table_data = [
+        [
+            Paragraph("<b>Nombre del Paciente:</b>", styles["Normal"]),
+            Paragraph(patient_info.name, styles["Normal"]),
+        ],
+        [
+            Paragraph("<b>Edad:</b>", styles["Normal"]),
+            Paragraph(f"{patient_info.age} años", styles["Normal"]),
+        ],
+        [
+            Paragraph("<b>Sexo:</b>", styles["Normal"]),
+            Paragraph(
+                f"{'Masculino' if patient_info.sex == 0 else 'Femenino' if patient_info.sex == 1 else 'Otro'}",
+                styles["Normal"],
+            ),
+        ],
+    ]
+    patient_table = Table(patient_table_data, colWidths=[2 * inch, 4 * inch])
+    patient_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), "Roboto"),
+                ("FONTSIZE", (0, 0), (-1, -1), 11),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    content.append(patient_table)
+    content.append(Spacer(1, 12))
+
+    # Procesar imagen para incluirla en el reporte
+    img_width = 5 * inch
+    img_height = 5 * inch
+
+    def process_image(image_bytes):
+        img = Image.open(BytesIO(image_bytes))
+        img_buffer = BytesIO()
+        img.save(img_buffer, format="PNG")
+        img_buffer.seek(0)
+        return ReportLabImage(img_buffer, width=img_width, height=img_height)
+
+    predicted_img = process_image(predicted_image)
+
+    # Agregar imagen al contenido
+    content.append(Paragraph("Resultado del Análisis de Imagen", styles["Heading2"]))
+    content.append(Spacer(1, 12))
+    content.append(predicted_img)
+    content.append(Spacer(1, 12))
+
+    # Análisis de la imagen
+    content.append(Paragraph("Análisis de la Imagen", styles["Heading2"]))
+    types_list = ", ".join(acne_types)
+    content.append(
+        Paragraph(
+            f"Los tipos de acné identificados en su caso son: <b>{types_list}</b>.",
+            styles["Normal"],
+        )
+    )
+    content.append(Spacer(1, 12))
+
+    # Análisis de factores externos
+    content.append(Paragraph("Análisis de Factores Externos", styles["Heading2"]))
+    factor_explanations = {
+        "stress_level": "El estrés puede aumentar la producción de sebo, lo que puede empeorar el acné.",
+        "diet_quality": "Una dieta balanceada ayuda a reducir la inflamación y mejora la salud de la piel.",
+        "skin_type": "El tipo de piel influye en la producción de sebo y la tendencia a desarrollar acné.",
+        "sun_exposure": "La exposición al sol puede dañar la piel y empeorar las cicatrices de acné.",
+        "makeup_use": "El uso frecuente de maquillaje puede obstruir los poros y agravar el acné.",
+    }
+
+    for factor in factor_explanations.keys():
+        factor_value = getattr(factors, factor)
+        content.append(
+            Paragraph(
+                f"<b>{factor.replace('_', ' ').title()}:</b> {factor_value}",
+                styles["Normal"],
+            )
+        )
+        content.append(Paragraph(factor_explanations[factor], styles["Justify"]))
+        content.append(Spacer(1, 6))
+
+    content.append(Spacer(1, 12))
+
+    # Interpretación general
+    content.append(Paragraph("Interpretación General", styles["Heading2"]))
+    interpretation_text = "Basado en nuestro análisis, se han identificado los siguientes puntajes para cada tipo de acné:"
+    content.append(Paragraph(interpretation_text, styles["Justify"]))
+    content.append(Spacer(1, 12))
+
+    # Tabla de puntajes por tipo de acné
+    acne_scores_table_data = [
+        [
+            Paragraph("<b>Tipo de Acné</b>", styles["Normal"]),
+            Paragraph("<b>Puntaje</b>", styles["Normal"]),
+        ]
+    ]
+    for acne_type, score in factor_analysis.items():
+        acne_scores_table_data.append(
+            [
+                Paragraph(acne_type, styles["Normal"]),
+                Paragraph(f"{score:.2f}", styles["Normal"]),
+            ]
+        )
+    acne_scores_table = Table(acne_scores_table_data, colWidths=[3 * inch, 1.5 * inch])
+    acne_scores_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ("FONTNAME", (0, 0), (-1, -1), "Roboto"),
+                ("FONTSIZE", (0, 0), (-1, -1), 11),
+                ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+            ]
+        )
+    )
+    content.append(acne_scores_table)
+    content.append(Spacer(1, 12))
+
+    # Recomendaciones personalizadas
+    content.append(Paragraph("Recomendaciones Personalizadas", styles["Heading2"]))
+    for rec in recommendations:
+        content.append(Paragraph(f"• {rec}", styles["Normal"]))
+    content.append(Spacer(1, 12))
+
+    # Conclusión
+    content.append(
+        Paragraph(
+            "Es fundamental seguir una rutina de cuidado de la piel adecuada y considerar las recomendaciones proporcionadas. "
+            "Si los síntomas persisten o se agravan, consulte a un dermatólogo para obtener un tratamiento especializado.",
+            styles["Justify"],
+        )
+    )
+    content.append(Spacer(1, 12))
+
+    # Construir el PDF con marca de agua
+    def add_watermark(canvas, doc):
+        watermark_path = os.path.join("app", "watermark.png")
+        if os.path.exists(watermark_path):
+            canvas.saveState()
+            watermark = Image.open(watermark_path)
+            watermark_width, watermark_height = watermark.size
+            page_width, page_height = letter
+            scale = (
+                min(
+                    float(page_width) / watermark_width,
+                    float(page_height) / watermark_height,
                 )
+                * 0.5
+            )
+            new_width = int(watermark_width * scale)
+            new_height = int(watermark_height * scale)
+            x = (page_width - new_width) / 2
+            y = (page_height - new_height) / 2
+            canvas.drawImage(
+                watermark_path, x, y, width=new_width, height=new_height, mask="auto"
+            )
+            canvas.restoreState()
 
-        # Convertir la imagen procesada a base64 con alta calidad
-        buffered = BytesIO()
-        img.save(buffered, format="JPEG", quality=95)
-        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        # Agregar número de página
+        page_num = canvas.getPageNumber()
+        text = f"Página {page_num}"
+        canvas.setFont("Roboto", 9)
+        canvas.drawRightString(letter[0] - 72, 15 * mm, text)
 
-        return {"detections": detections, "image": img_base64}
+    doc.build(content, onFirstPage=add_watermark, onLaterPages=add_watermark)
+    buffer.seek(0)
+    return buffer
+
+
+acne_system = AcneAnalysisSystem()
+
+
+@app.post("/analyze", response_model=AcneAnalysisResult)
+async def analyze_acne(
+    image: UploadFile = File(...),
+    patient_info: str = Form(...),
+    factors: str = Form(...),
+):
+    try:
+        patient_info = PatientInfo(**json.loads(patient_info))
+        factors = ExternalFactors(**json.loads(factors))
+
+        contents = await image.read()
+        img = Image.open(BytesIO(contents))
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Procesar imagen con detecciones
+        detections = acne_system.analyze_image(img)
+
+        # Dibujar detecciones en la imagen
+        draw = ImageDraw.Draw(img)
+        for detection in detections:
+            x, y = detection["center"]
+            r = 5  # Radio del círculo
+            draw.ellipse((x - r, y - r, x + r, y + r), outline="red", width=2)
+        img_buffer = BytesIO()
+        img.save(img_buffer, format="PNG")
+        processed_image = img_buffer.getvalue()
+
+        factor_analysis = acne_system.analyze_external_factors(factors, detections)
+        recommendations = acne_system.generate_recommendations(factor_analysis, factors)
+
+        # Obtener los tipos de acné detectados
+        acne_types_detected = list(factor_analysis.keys())
+
+        # Crear el informe en PDF
+        pdf_buffer = create_acne_report(
+            patient_info,
+            acne_types_detected,
+            processed_image,
+            factor_analysis,
+            recommendations,
+            detections,
+            factors,
+        )
+        pdf_base64 = base64.b64encode(pdf_buffer.getvalue()).decode()
+
+        return AcneAnalysisResult(
+            detections=detections,
+            factor_analysis=factor_analysis,
+            recommendations=recommendations,
+            pdf_report=pdf_base64,
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+        raise HTTPException(
+            status_code=400, detail=f"Error processing request: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

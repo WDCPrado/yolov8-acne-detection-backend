@@ -1,68 +1,64 @@
 import requests
-import base64
-from PIL import Image
-import io
+import json
 import os
+import base64
 
 
-def test_predict_endpoint(image_path, server_url="http://localhost:8000"):
-    # Verificar si el archivo existe
+def test_analyze_endpoint(image_path, server_url="http://localhost:8000"):
     if not os.path.exists(image_path):
         print(f"Error: El archivo {image_path} no existe.")
         return
 
-    # Leer la imagen y convertirla a base64
-    try:
-        with open(image_path, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
-    except Exception as e:
-        print(f"Error al leer la imagen: {e}")
-        return
+    with open(image_path, "rb") as image_file:
+        files = {"image": ("image.jpg", image_file, "image/jpeg")}
+        data = {
+            "patient_info": json.dumps(
+                {"name": "Paciente de Prueba", "age": 30, "sex": 0}
+            ),
+            "factors": json.dumps(
+                {
+                    "stress_level": 7,
+                    "diet_quality": 6,
+                    "skin_type": 3,
+                    "sun_exposure": 2,
+                    "makeup_use": 2,
+                }
+            ),
+        }
 
-    # Preparar los datos para la solicitud
-    data = {"image": encoded_string}
+        try:
+            response = requests.post(f"{server_url}/analyze", files=files, data=data)
+            response.raise_for_status()
+            result = response.json()
+            print("Análisis completado con éxito.")
+            print("\nDetecciones:")
+            for detection in result["detections"]:
+                print(
+                    f"  Clase: {detection['class_name']}, Confianza: {detection['confidence']:.2f}"
+                )
 
-    # Hacer la solicitud POST al endpoint
-    try:
-        response = requests.post(f"{server_url}/predict", json=data)
-        response.raise_for_status()  # Esto lanzará una excepción para códigos de error HTTP
-    except requests.exceptions.RequestException as e:
-        print(f"Error en la solicitud: {e}")
-        if response.text:
-            print(f"Respuesta del servidor: {response.text}")
-        return
+            print("\nAnálisis de Factores:")
+            for factor, score in result["factor_analysis"].items():
+                print(f"  {factor}: {score:.2f}")
 
-    # Procesar la respuesta
-    try:
-        result = response.json()
-    except ValueError:
-        print("Error: No se pudo decodificar la respuesta JSON")
-        print(f"Respuesta del servidor: {response.text}")
-        return
+            print("\nRecomendaciones:")
+            for recommendation in result["recommendations"]:
+                print(f"  - {recommendation}")
 
-    # Extraer la imagen resultante de base64
-    try:
-        image_data = base64.b64decode(result["image"])
-        image = Image.open(io.BytesIO(image_data))
+            print("\nInforme PDF generado y disponible en la respuesta.")
 
-        # Guardar la imagen resultante
-        output_path = "testing/resultado_prediccion.jpg"
-        image.save(output_path)
-        print(f"Imagen con predicciones guardada como: {output_path}")
-    except Exception as e:
-        print(f"Error al procesar la imagen resultante: {e}")
+            # Guardar el PDF
+            pdf_data = base64.b64decode(result["pdf_report"])
+            with open("testing/informe_acne.pdf", "wb") as pdf_file:
+                pdf_file.write(pdf_data)
+            print("Informe PDF guardado como 'informe_acne.pdf'")
 
-    # Imprimir las detecciones
-    if "detections" in result:
-        print("Detecciones:")
-        for detection in result["detections"]:
-            print(
-                f"Clase: {detection['class_name']}, Confianza: {detection['confidence']:.2f}"
-            )
-    else:
-        print("No se encontraron detecciones en la respuesta.")
+        except requests.exceptions.RequestException as e:
+            print(f"Error en la solicitud: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Respuesta del servidor: {e.response.text}")
 
 
 if __name__ == "__main__":
     image_path = "testing/acne.png"
-    test_predict_endpoint(image_path)
+    test_analyze_endpoint(image_path)

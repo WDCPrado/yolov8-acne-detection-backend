@@ -1,6 +1,7 @@
 from invoke import task
 import os
 import shutil
+import subprocess
 
 
 @task
@@ -30,13 +31,19 @@ def update(c):
 @task
 def start(c):
     """Inicia el servidor en modo producción."""
-    c.run("uvicorn app.main:app --host 0.0.0.0 --port 80")
+    print("Iniciando servidor en modo producción...")
+    print("Servidor corriendo en http://localhost:80")
+    subprocess.run(["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"])
 
 
 @task
 def dev(c):
     """Inicia el servidor en modo desarrollo con recarga automática."""
-    c.run("uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload")
+    print("Iniciando servidor en modo desarrollo...")
+    print("Servidor corriendo en http://localhost:8000")
+    subprocess.run(
+        ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    )
 
 
 @task

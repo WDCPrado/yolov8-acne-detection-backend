@@ -1,6 +1,14 @@
-# YOLO Acne Detection Backend
+# Sistema de Análisis y Detección de Acné
 
-Este proyecto implementa un backend para la detección de acné utilizando YOLOv8, FastAPI y Docker. El sistema carga un modelo pre-entrenado para identificar y localizar acné en imágenes.
+Este proyecto implementa un backend completo para la detección y análisis de acné utilizando YOLOv8, FastAPI y Docker. El sistema carga un modelo pre-entrenado para identificar y localizar acné en imágenes, analiza factores externos y genera un informe detallado en PDF.
+
+## Características Principales
+
+- Detección de acné en imágenes utilizando YOLOv8
+- Análisis de factores externos que influyen en el acné
+- Generación de recomendaciones personalizadas
+- Creación de informes detallados en PDF
+- API RESTful para fácil integración
 
 ## Estructura del Proyecto
 
@@ -10,26 +18,14 @@ yolov8-acne-detection-backend
 ├── .gitignore
 ├── app
 │   ├── fonts
-│   │   └── roboto
+│   │   └── Roboto
 │   │       ├── LICENSE.txt
-│   │       ├── Roboto-Black.ttf
-│   │       ├── Roboto-BlackItalic.ttf
-│   │       ├── Roboto-Bold.ttf
-│   │       ├── Roboto-BoldItalic.ttf
-│   │       ├── Roboto-Italic.ttf
-│   │       ├── Roboto-Light.ttf
-│   │       ├── Roboto-LightItalic.ttf
-│   │       ├── Roboto-Medium.ttf
-│   │       ├── Roboto-MediumItalic.ttf
-│   │       ├── Roboto-Regular.ttf
-│   │       ├── Roboto-Thin.ttf
-│   │       └── Roboto-ThinItalic.ttf
+│   │       ├── Roboto-*.ttf
 │   ├── main.py
 │   ├── watermark.png
 │   ├── weights
 │   │   └── bestv1.pt
 │   └── __pycache__
-│       └── main.cpython-39.pyc
 ├── docker-compose.yml
 ├── Dockerfile
 ├── README.md
@@ -42,8 +38,10 @@ yolov8-acne-detection-backend
     └── resultado_prediccion.jpg
 ```
 
-- `app/main.py`: Contiene la lógica principal de la aplicación FastAPI.
+- `app/main.py`: Lógica principal de la aplicación FastAPI.
 - `app/weights/bestv1.pt`: Modelo pre-entrenado de YOLOv8 para la detección de acné.
+- `app/fonts/Roboto`: Fuentes utilizadas en la generación de PDF.
+- `app/watermark.png`: Imagen de marca de agua para los informes PDF.
 - `docker-compose.yml`: Configuración para ejecutar la aplicación en Docker.
 - `Dockerfile`: Instrucciones para construir la imagen Docker.
 - `requirements.txt`: Lista de dependencias de Python.
@@ -103,15 +101,14 @@ yolov8-acne-detection-backend
    docker-compose up
    ```
 
-## Uso del Modelo Pre-entrenado
-
-El modelo YOLOv8 pre-entrenado para la detección de acné (`bestv1.pt`) se carga automáticamente al iniciar la aplicación. Este modelo ha sido entrenado específicamente para identificar y localizar áreas de acné en imágenes faciales.
-
 ## API Endpoints
 
-- `POST /predict`: Acepta una imagen y devuelve las detecciones de acné.
-  - Cuerpo de la solicitud: Archivo de imagen
-  - Respuesta: JSON con las coordenadas de las detecciones y confianza
+- `POST /analyze`: Analiza una imagen de acné y proporciona un informe detallado.
+  - Cuerpo de la solicitud:
+    - `image`: Archivo de imagen
+    - `patient_info`: Información del paciente (JSON)
+    - `factors`: Factores externos (JSON)
+  - Respuesta: JSON con detecciones, análisis de factores, recomendaciones y un informe PDF codificado en base64.
 
 ## Desarrollo
 
@@ -122,20 +119,23 @@ El modelo YOLOv8 pre-entrenado para la detección de acné (`bestv1.pt`) se carg
   ```
 
 - Para limpiar archivos temporales:
+
   ```
   invoke clean
+  ```
+
+- Para ejecutar una predicción de prueba:
+  ```
+  invoke predict
   ```
 
 ## Notas Adicionales
 
 - Asegúrate de que el modelo pre-entrenado (`bestv1.pt`) esté presente en la carpeta `app/weights/` antes de ejecutar la aplicación.
 - La aplicación utiliza FastAPI, lo que permite una fácil extensión y documentación automática de la API.
-- El uso de Invoke simplifica la ejecución de tareas comunes del proyecto.
+- El sistema genera informes detallados en PDF utilizando ReportLab.
+- Se incluye un análisis de factores externos que influyen en el acné.
 
 ## Contribuciones
 
 Las contribuciones son bienvenidas. Por favor, abre un issue para discutir cambios mayores antes de hacer un pull request.
-
-## Licencia
-
-[Incluir información de licencia aquí]

@@ -13,15 +13,15 @@ def test_analyze_endpoint(image_path, server_url="http://localhost:8000"):
         files = {"image": ("image.jpg", image_file, "image/jpeg")}
         data = {
             "patient_info": json.dumps(
-                {"name": "Paciente de Prueba", "age": 30, "sex": 0}
+                {"name": "Paciente de Prueba", "age": 25, "sex": 0}
             ),
             "factors": json.dumps(
                 {
                     "stress_level": 7,
                     "diet_quality": 6,
-                    "skin_type": 3,
+                    "skin_type": 2,
                     "sun_exposure": 2,
-                    "makeup_use": 2,
+                    "makeup_use": 1,
                 }
             ),
         }

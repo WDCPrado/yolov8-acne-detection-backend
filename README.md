@@ -138,7 +138,7 @@ yolov8-acne-detection-backend
 
 ## Contribuciones
 
-Las contribuciones son bienvenidas. Por favor, abre un issue para discutir cambios mayores antes de hacer un pull request.
+Las contribuciones son bienvenidas. Por favor, abre un issue para discutir cambios mayores antes de hacer un pull request. test
 
 ## Licencia
 

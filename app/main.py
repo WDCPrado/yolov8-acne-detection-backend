@@ -50,11 +50,11 @@ class PatientInfo(BaseModel):
 
 
 class ExternalFactors(BaseModel):
-    stress_level: int
-    diet_quality: int
-    skin_type: int
-    sun_exposure: int
-    makeup_use: int
+    stress_level: int  # Nivel de estrés (1-10)
+    diet_quality: int  # Calidad de la dieta (1-10)
+    skin_type: int  # Tipo de piel (1: Seca, 2: Mixta, 3: Grasosa, 4: Sensible)
+    sun_exposure: int  # Exposición al sol (1: Baja, 2: Moderada, 3: Alta)
+    makeup_use: int  # Uso de maquillaje (1: Rara vez, 2: A veces, 3: Frecuente)
 
 
 class AcneAnalysisResult(BaseModel):
@@ -66,38 +66,37 @@ class AcneAnalysisResult(BaseModel):
 
 class AcneAnalysisSystem:
     def __init__(self):
-        # Pesos predeterminados si el tipo de acné no está especificado
-        self.DEFAULT_FACTOR_WEIGHTS = {
-            "stress_level": 0.2,
-            "diet_quality": 0.2,
-            "skin_type": 0.2,
-            "sun_exposure": 0.2,
-            "makeup_use": 0.2,
-        }
         # Pesos específicos por tipo de acné
         self.ACNE_TYPE_FACTOR_WEIGHTS = {
-            "Comedonal Acne": {
-                "stress_level": 0.1,
+            "Acné General": {
+                "stress_level": 0.25,
+                "diet_quality": 0.25,
+                "skin_type": 0.2,
+                "sun_exposure": 0.15,
+                "makeup_use": 0.15,
+            },
+            "Acné Comedonal": {
+                "stress_level": 0.2,
                 "diet_quality": 0.3,
                 "skin_type": 0.3,
                 "sun_exposure": 0.1,
-                "makeup_use": 0.2,
+                "makeup_use": 0.1,
             },
-            "Inflammatory Acne": {
+            "Acné Inflamatorio": {
                 "stress_level": 0.3,
                 "diet_quality": 0.2,
+                "skin_type": 0.25,
+                "sun_exposure": 0.15,
+                "makeup_use": 0.1,
+            },
+            "Acné Quístico": {
+                "stress_level": 0.35,
+                "diet_quality": 0.15,
                 "skin_type": 0.2,
                 "sun_exposure": 0.2,
                 "makeup_use": 0.1,
             },
-            "Cystic Acne": {
-                "stress_level": 0.4,
-                "diet_quality": 0.1,
-                "skin_type": 0.1,
-                "sun_exposure": 0.3,
-                "makeup_use": 0.1,
-            },
-            # Agrega más tipos de acné si es necesario
+            # Puedes agregar más tipos de acné y sus pesos correspondientes
         }
 
     def analyze_external_factors(
@@ -112,9 +111,13 @@ class AcneAnalysisSystem:
                 acne_type_counts[acne_type] = 0
             acne_type_counts[acne_type] += confidence
 
+        if not detections:
+            # Si no hay detecciones, asumimos acné general
+            acne_type_counts["Acné General"] = 1.0
+
         for acne_type, total_confidence in acne_type_counts.items():
             factor_weights = self.ACNE_TYPE_FACTOR_WEIGHTS.get(
-                acne_type, self.DEFAULT_FACTOR_WEIGHTS
+                acne_type, self.ACNE_TYPE_FACTOR_WEIGHTS["Acné General"]
             )
             acne_score = 0
             for factor, weight in factor_weights.items():
@@ -126,13 +129,14 @@ class AcneAnalysisSystem:
 
     def normalize_factor(self, factor: str, value: int) -> float:
         if factor in ["stress_level", "diet_quality"]:
-            return value / 10
+            return value / 10  # Normalizamos a un valor entre 0 y 1
         elif factor == "skin_type":
-            return {1: 0.3, 2: 0.5, 3: 0.7, 4: 1.0}.get(value, 0.5)
+            # Mapeamos los tipos de piel a valores
+            return {1: 0.3, 2: 0.5, 3: 0.7, 4: 0.9}.get(value, 0.5)
         elif factor == "sun_exposure":
-            return {1: 0.3, 2: 0.6, 3: 1.0}.get(value, 0.5)
+            return {1: 0.3, 2: 0.6, 3: 0.9}.get(value, 0.5)
         elif factor == "makeup_use":
-            return {1: 0.3, 2: 0.6, 3: 1.0}.get(value, 0.5)
+            return {1: 0.3, 2: 0.6, 3: 0.9}.get(value, 0.5)
         else:
             return 0.5
 
@@ -155,7 +159,7 @@ class AcneAnalysisSystem:
             recommendations.append(
                 "Mejora tu dieta incluyendo más frutas, verduras y alimentos ricos en omega-3."
             )
-        if factors.skin_type == 4:
+        if factors.skin_type == 3:  # Piel grasosa
             recommendations.append(
                 "Usa productos no comedogénicos y limpia tu rostro dos veces al día."
             )
@@ -183,6 +187,8 @@ class AcneAnalysisSystem:
                 confidence = box.conf[0]
                 class_id = box.cls[0]
                 class_name = model.names[int(class_id)]
+                # Mapeamos el nombre de la clase si es necesario
+                class_name = self.map_class_name(class_name)
                 detections.append(
                     {
                         "center": [(x1 + x2) / 2, (y1 + y2) / 2],
@@ -192,6 +198,20 @@ class AcneAnalysisSystem:
                     }
                 )
         return detections
+
+    def map_class_name(self, class_name: str) -> str:
+        # Mapeamos los nombres de las clases a los tipos de acné definidos
+        class_mapping = {
+            "acne": "Acné General",
+            "blackhead": "Acné Comedonal",
+            "whitehead": "Acné Comedonal",
+            "papule": "Acné Inflamatorio",
+            "pustule": "Acné Inflamatorio",
+            "nodule": "Acné Quístico",
+            "cyst": "Acné Quístico",
+            # Agrega más mapeos si es necesario
+        }
+        return class_mapping.get(class_name.lower(), "Acné General")
 
 
 def create_acne_report(
@@ -289,7 +309,7 @@ def create_acne_report(
 
     # Análisis de la imagen
     content.append(Paragraph("Análisis de la Imagen", styles["Heading2"]))
-    types_list = ", ".join(acne_types)
+    types_list = ", ".join(set(acne_types))
     content.append(
         Paragraph(
             f"Los tipos de acné identificados en su caso son: <b>{types_list}</b>.",
@@ -308,11 +328,23 @@ def create_acne_report(
         "makeup_use": "El uso frecuente de maquillaje puede obstruir los poros y agravar el acné.",
     }
 
+    # Mapeo para mostrar valores legibles de los factores
+    skin_type_mapping = {1: "Seca", 2: "Mixta", 3: "Grasosa", 4: "Sensible"}
+    sun_exposure_mapping = {1: "Baja", 2: "Moderada", 3: "Alta"}
+    makeup_use_mapping = {1: "Rara vez", 2: "A veces", 3: "Frecuente"}
+
     for factor in factor_explanations.keys():
         factor_value = getattr(factors, factor)
+        readable_value = factor_value
+        if factor == "skin_type":
+            readable_value = skin_type_mapping.get(factor_value, "Desconocido")
+        elif factor == "sun_exposure":
+            readable_value = sun_exposure_mapping.get(factor_value, "Desconocido")
+        elif factor == "makeup_use":
+            readable_value = makeup_use_mapping.get(factor_value, "Desconocido")
         content.append(
             Paragraph(
-                f"<b>{factor.replace('_', ' ').title()}:</b> {factor_value}",
+                f"<b>{factor.replace('_', ' ').title()}:</b> {readable_value}",
                 styles["Normal"],
             )
         )
@@ -390,8 +422,14 @@ def create_acne_report(
             new_height = int(watermark_height * scale)
             x = (page_width - new_width) / 2
             y = (page_height - new_height) / 2
+            watermark_path_absolute = os.path.abspath(watermark_path)
             canvas.drawImage(
-                watermark_path, x, y, width=new_width, height=new_height, mask="auto"
+                watermark_path_absolute,
+                x,
+                y,
+                width=new_width,
+                height=new_height,
+                mask="auto",
             )
             canvas.restoreState()
 
@@ -441,7 +479,9 @@ async def analyze_acne(
         recommendations = acne_system.generate_recommendations(factor_analysis, factors)
 
         # Obtener los tipos de acné detectados
-        acne_types_detected = list(factor_analysis.keys())
+        acne_types_detected = [detection["class_name"] for detection in detections]
+        if not acne_types_detected:
+            acne_types_detected = ["Acné General"]
 
         # Crear el informe en PDF
         pdf_buffer = create_acne_report(

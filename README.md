@@ -9,7 +9,23 @@ yolov8-acne-detection-backend
 ├── .dockerignore
 ├── .gitignore
 ├── app
+│   ├── fonts
+│   │   └── roboto
+│   │       ├── LICENSE.txt
+│   │       ├── Roboto-Black.ttf
+│   │       ├── Roboto-BlackItalic.ttf
+│   │       ├── Roboto-Bold.ttf
+│   │       ├── Roboto-BoldItalic.ttf
+│   │       ├── Roboto-Italic.ttf
+│   │       ├── Roboto-Light.ttf
+│   │       ├── Roboto-LightItalic.ttf
+│   │       ├── Roboto-Medium.ttf
+│   │       ├── Roboto-MediumItalic.ttf
+│   │       ├── Roboto-Regular.ttf
+│   │       ├── Roboto-Thin.ttf
+│   │       └── Roboto-ThinItalic.ttf
 │   ├── main.py
+│   ├── watermark.png
 │   ├── weights
 │   │   └── bestv1.pt
 │   └── __pycache__
@@ -21,6 +37,7 @@ yolov8-acne-detection-backend
 ├── tasks.py
 └── testing
     ├── acne.png
+    ├── informe_acne.pdf
     ├── predict.py
     └── resultado_prediccion.jpg
 ```

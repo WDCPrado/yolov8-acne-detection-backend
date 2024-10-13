@@ -67,6 +67,6 @@ def list(c):
 
 
 @task
-def predict(c):
+def test(c):
     """Predicción de prueba."""
-    c.run("python testing/predict.py")
+    c.run("python testing/test.py")

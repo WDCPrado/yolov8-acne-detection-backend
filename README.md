@@ -18,24 +18,45 @@ yolov8-acne-detection-backend
 ├── .gitignore
 ├── app
 │   ├── fonts
-│   │   └── Roboto
+│   │   └── roboto
 │   │       ├── LICENSE.txt
-│   │       ├── Roboto-*.ttf
+│   │       ├── Roboto-Black.ttf
+│   │       ├── Roboto-BlackItalic.ttf
+│   │       ├── Roboto-Bold.ttf
+│   │       ├── Roboto-BoldItalic.ttf
+│   │       ├── Roboto-Italic.ttf
+│   │       ├── Roboto-Light.ttf
+│   │       ├── Roboto-LightItalic.ttf
+│   │       ├── Roboto-Medium.ttf
+│   │       ├── Roboto-MediumItalic.ttf
+│   │       ├── Roboto-Regular.ttf
+│   │       ├── Roboto-Thin.ttf
+│   │       └── Roboto-ThinItalic.ttf
 │   ├── main.py
+│   ├── models
+│   │   ├── acne.py
+│   │   ├── data_models.py
+│   │   ├── detection.py
+│   │   ├── weights
+│   │   │   └── acne.pt
+│   │   └── __pycache__
+│   │       ├── acne.cpython-39.pyc
+│   │       ├── data_models.cpython-39.pyc
+│   │       └── detection.cpython-39.pyc
 │   ├── watermark.png
-│   ├── weights
-│   │   └── bestv1.pt
 │   └── __pycache__
+│       └── main.cpython-39.pyc
 ├── docker-compose.yml
 ├── Dockerfile
+├── LICENSE
 ├── README.md
 ├── requirements.txt
 ├── tasks.py
 └── testing
     ├── acne.png
     ├── informe_acne.pdf
-    ├── predict.py
-    └── resultado_prediccion.jpg
+    ├── resultado_prediccion.jpg
+    └── test.py
 ```
 
 - `app/main.py`: Lógica principal de la aplicación FastAPI.
